@@ -1,0 +1,77 @@
+@api_view(['POST'])
+@transaction.atomic(using="tsplan")
+@parser_classes([JSONParser])
+def wh_box_fg_save(request):
+    result = {}
+    try:
+        now = libs.get_today()
+        raw = JSONParser().parse(request)
+        action = raw.get('action', 'save')
+        obj = raw.get('data', {})
+        if action == 'list':
+            masters = WhBoxFgMaster.objects.using('tsplan').all().order_by('id')
+            result = []
+            for m in masters:
+                details = WhBoxFgDetail.objects.using('tsplan').filter(request_id=m.id)
+                result.append({
+                    'id': m.id,
+                    'request_no': m.request_no,
+                    'type_name': m.type_name,
+                    'request_date': m.request_date,
+                    'status': m.status,
+                    'work_order': m.work_order,
+                    'total_box': m.total_box,
+                    'create_by': m.create_by,
+                    'create_date': m.create_date,
+                    'details': list(details.values('box_no', 'qty'))
+                })
+            return JsonResponse(result, safe=False)
+       
+       
+       
+       
+        if 'id' not in obj['master'] or obj['master']['id'] is None:
+            master = obj['master']
+            gennoTmp = str(now.year) + str(now.month).zfill(2) + '-'
+            max_master = WhBoxFgMaster.objects.using('tsplan') \
+                .filter(request_no__startswith=gennoTmp).last()
+            if max_master is not None:
+                no = int(max_master.request_no.replace(gennoTmp, '')) + 1
+                gennoTmp = gennoTmp + str(no).zfill(4)
+            else:
+                gennoTmp = gennoTmp + '0001'
+
+
+            master['request_no'] = gennoTmp
+            master['status'] = 10
+            master['request_date'] = now
+            master['create_date'] = now
+
+
+            data = WhBoxFgMaster.objects.using('tsplan').create(**master)
+            result['id'] = data.id
+
+
+            for item in obj['items']:
+                item.pop('id', None)
+                WhBoxFgDetail.objects.using('tsplan').create(
+                    box_no=item['box_no'],
+                    qty=item['qty'],
+                    request_id=data.id
+                )
+        else:
+            pk = obj['master']['id']
+            result['id'] = pk
+            result['request_no'] = obj['master']['request_no']
+            del obj['master']['id']
+            WhBoxFgMaster.objects.using('tsplan').filter(id=pk).update(**obj['master'])
+
+
+        result['message'] = "ok"
+    except Exception as e:
+        print("{0} : {1}".format(sys.exc_info()[-1].tb_lineno, str(e)))
+        transaction.set_rollback(True, using="tsplan")
+        result['message'] = str(e)
+
+
+    return JsonResponse(result, safe=False)
