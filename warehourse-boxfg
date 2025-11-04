@@ -1,0 +1,421 @@
+import { ThisReceiver } from '@angular/compiler';
+import { Component } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
+import { quartersToYears } from 'date-fns';
+import { LoadingSpinnerService } from '../../../services/loading-spinner.service';
+import { AuthPermissionService } from '../../../services/RestFul/auth-permission.service';
+import { MpsService } from '../../../services/RestFul/mps.service';
+import { SviInterfaceReportServiceService } from '../../../services/RestFul/svi-interface-report-service.service';
+import { WroService } from '../../../services/RestFul/wro.service';
+import { da } from 'date-fns/locale';
+import { WhShipService } from '../../../services/RestFul/wh-ship.service';
+import { HttpClient } from '@angular/common/http';
+import Swal from 'sweetalert2/dist/sweetalert2.js';
+@Component({
+  selector: 'ngx-wh-boxfg',
+  templateUrl: './wh-boxfg.component.html',
+  styleUrls: ['./wh-boxfg.component.scss']
+})
+
+
+export class WhBoxfgComponent {
+  data = {type_name: '',id: null,request_no: null, request_date: null,status: null,work_order: null,total_box: null,create_date:null,create_by:null,fg_material:null,oqa:null,oqa_date:null,remark:null,qty_box:null};
+  boxes  :any[]= [];
+  showModal = false;
+  data2: any[] = [];
+  showDetailModal = false;
+  selectedDetail: any = {};
+  workorder: string = '';
+  message: string = '';
+  data3=[];
+  materialsFilterList: string[] = [];
+  selectedMaterial: string = '';
+  filteredData2: any[] = [];
+  filteredData3: any[] = [];
+ 
+ 
+  weeks: { label: string; value: number }[] = [];
+  selectedWeek: number | null = null;
+  years: any[] = [];
+  selectedYear: number | null = null;  
+  year:any[]=[];
+
+
+  customers: { label: string, value: string }[] = [];
+  selectedCustomer: string | null = null;
+  constructor(private apiService: WhShipService,
+      private http: HttpClient,
+      private wroApi: WroService,
+      private authService: AuthPermissionService,
+      private route: ActivatedRoute,
+      private interfaceService: SviInterfaceReportServiceService,
+      public spinner$: LoadingSpinnerService,
+     
+      ) {
+    }
+    ngOnInit(): void {
+      this.loadData();
+      this.workorderData();
+     
+    }
+
+
+   
+    //ตอนเลือกtype ให้ status เป็น 1 WH request
+    onTypeChange(type: string) {
+      this.data.type_name = type;
+      this.data.status = 1; // กำหนดค่า status = 1 เมื่อมีการเลือก Type
+    }
+    //ในtable status
+    getStatusLabel(status: number): string {
+      switch (status) {
+        case 1: return 'WH Request';
+        case 2: return 'Finish';
+        case 3: return 'Rejected';
+        default: return '-';
+      }
+    }
+    //modal detail
+    openModalWithDetail(item: any) {
+      this.selectedDetail = { ...item };
+      this.selectedDetail.boxes = item.details || [];
+      console.log("ดูรายละเอียด:", this.selectedDetail);
+      this.showDetailModal = true;
+    }
+   
+    closeDetailModal() {
+      this.showDetailModal = false;
+    }
+   
+   
+  closeModal() {
+
+
+    this.showModal = false;
+    this.resetForm();
+  }
+  resetForm() {
+    this.data = {type_name: '',id: null,request_no: null, request_date: null,status: null,work_order: null,total_box: null,create_date:null,create_by:null,fg_material:null,oqa:null,oqa_date:null,remark:null,qty_box:null};
+    this.boxes = [];
+    this.message = '';
+   
+  }
+  //addboxใช้pushเพื่อเพิ่มกล่อง
+  addBox() {
+    this.boxes.push({box_no: this.boxes.length+1, qty:null});
+  }
+  deleteBox(){
+    this.boxes.splice(0,1);
+    this.calculateTotal();
+  }
+
+
+  calculateTotal(){    //calboxกล่องและqty
+    let sum = 0;
+    for(let i=0;i<this.boxes.length;i++){
+      sum += Number(this.boxes[i].qty) || 0;
+    }
+   
+    this.data.total_box = sum;
+    this.data.qty_box = this.boxes.length;
+    if(this.data.type_name === 'Separate'){
+      const count = this.boxes.filter(b => Number(b.qty) > 0).length;
+      this.data.qty_box = count;
+    }else if(this.data.type_name==='Join'){
+      this.data.qty_box=1;
+    }else{
+      this.data.qty_box=0;
+    }
+    //sum qty of boxs;
+    //this.data.total_box = sum
+  }
+  //ใน table qty
+  formatQty(item: any): string {
+    if (!item?.details || item.details.length === 0) return '-';
+ 
+    const qtys = item.details.map(d => +d.qty);   //map เอาแค่ค่าvalueในqtyแล้วใช้joinเพิ่ม-+
+ 
+    if (item.type_name === 'Separate') {
+      return qtys.join(' - ');
+    } else if (item.type_name === 'Join') {
+      return qtys.join(' + ');
+    }
+ 
+    return '-';
+  }
+  //โชว์Data in table
+  loadData() {
+    this.apiService.getWhBoxFgList().subscribe({
+      next: (res) => {
+        this.data2 = res.filter(item => item.status === 1);
+        this.data3 = res.filter(item => item.status === 2|| item.status==3) ;   // Table 1
+        console.log('ข้อมูลทั้งหมดจาก backend:', res);
+        console.log(this.data2);
+        console.log('data3:', this.data3);
+        this.setMaterialsFilter();
+        this.setYearListFromRequestDate();
+        this.setWeekListFromRequestDate();
+        this.setCustomerListFromWorkOrder();
+      },
+      error: (err) => {
+        console.error('Error loading data:', err);
+      }
+    });
+  }
+ 
+  workorderData() {    
+    if (!this.data.work_order) {   //ถ้าไม่มีข้อมูลในworkorderต้องกรอกก่อน
+      this.message = 'กรุณากรอก workorder ก่อน';
+      return;
+    }
+ 
+    this.interfaceService.getCO03(this.data.work_order, '').subscribe((resp2: any) => {
+      const matnr = resp2?.data?.E_HEADER?.MATNR ||[]; // ดึงresp2.data.matnr ออกมาเก็บไว้var=matnr
+      console.log(resp2);
+      if (matnr) {
+        this.data.fg_material = matnr; // เก็บmatnrไว้ที่data.fg_material
+        this.message = `FG: ${matnr}`;
+        console.log('FG Material:', matnr);
+      } else {
+        this.data.fg_material = '';
+        this.message = 'ไม่มีข้อมูล FG';
+      }
+    }, error => {
+      this.data.fg_material = '';
+      this.message = 'เกิดข้อผิดพลาด';
+    });
+  }
+ 
+ 
+  submit() {
+    this.data.create_by = this.spinner$.getCurrentUser();
+    const data = { master: this.data, items: this.boxes };
+ 
+    this.apiService.wh_box_fg_master(data).subscribe((resp: any) => {
+      if (resp.message === 'ok') {
+        Swal.fire({
+          title: 'บันทึกสำเร็จ',
+          text: 'Request ของคุณถูกส่งเรียบร้อยแล้ว!',
+          icon: 'success' as const, //
+          confirmButtonText: 'ตกลง'
+        }).then(() => {
+          this.closeModal();
+          this.loadData();
+        });
+      } else {
+        Swal.fire({
+          title: 'เกิดข้อผิดพลาด',
+          text: 'มีปัญหา: ' + resp.message,
+          icon: 'error' as const, //
+          confirmButtonText: 'ปิด'
+        });
+      }
+    });
+  }
+
+
+  dissubmit():boolean{
+    if(!this.data.type_name ||!this.data.request_date || !this.data.work_order || this.boxes.length===0){
+      return true;
+    }
+    return this.boxes.some(b=>!b.qty || b.qty===0);
+    //ต้องกรอกข้อมูลให้ครบก่อนถึงจะsubmitได้
+  }
+  accpet(item: any) {     //ปุ่มaccpet detail modal
+    const currentUser = this.spinner$.getCurrentUser();
+    const now = new Date();
+ 
+    const payload = {
+      action: 'save',
+      data: {
+        master: {
+          id: item.id,
+          request_no: item.request_no,
+          oqa: currentUser,
+          status: 2,
+          oqa_date: now,
+          remark: this.selectedDetail.remark || ''
+        }
+      }
+    };
+ 
+    this.apiService.updateWhBoxFgStatus(payload).subscribe(
+      (res: any) => {
+       
+ 
+        Swal.fire({
+          icon: 'success' as const,
+          title: 'อนุมัติเรียบร้อยแล้ว',
+          text: 'สถานะได้รับการอัปเดตเป็น Approved',
+          confirmButtonText: 'ตกลง'
+        }).then(()=>{
+          this.showDetailModal = false;
+          this.loadData();
+        });
+      },
+      (err) => {
+        console.error(err);
+ 
+        Swal.fire({
+          icon: 'error' as const,
+          title: 'เกิดข้อผิดพลาด',
+          text: 'ไม่สามารถบันทึกข้อมูลได้ กรุณาลองใหม่',
+          confirmButtonText: 'ปิด'
+        });
+      }
+    );
+  }
+
+
+  rejectRequest(item:any){  //ปุ่มreject detaailmodal
+    const currentUser = this.spinner$.getCurrentUser();
+    const now = new Date();
+    const payload = {
+      action: 'save',
+      data: {
+        master: {
+          id: item.id,
+          request_no: item.request_no,
+          oqa: currentUser,
+          status: 3,
+          oqa_date: now,
+          remark:this.selectedDetail.remark || ''
+        }
+      }
+    };
+ 
+    this.apiService.updateWhBoxFgStatus(payload).subscribe(
+      (res: any) => {
+        Swal.fire({
+          icon:'warning' as const,
+          title:'รายการถูกปฏิเสธ',
+          text:'สถานะถูกreject',
+          confirmButtonText:'ตกลง'
+        }).then(()=>{
+          this.showDetailModal = false;
+          this.loadData();
+        })
+      },
+      (err) => {
+        console.error(err);
+        Swal.fire({
+          icon: 'error' as const,
+          title: 'เกิดข้อผิดพลาด',
+          text: 'ไม่สามารถบันทึกข้อมูลได้ กรุณาลองใหม่',
+          confirmButtonText: 'ปิด'
+        });
+      }
+    );
+  }
+
+
+  //filter year/ww/cust/meterial
+  setMaterialsFilter(){
+    const set  = new Set<string>();
+    this.data2.forEach(item =>{
+      if(item.fg_material){
+        set.add(item.fg_material);
+      }
+    });
+    this.data3.forEach(item => {
+      if (item.fg_material) {
+        set.add(item.fg_material);
+      }
+    });
+    this.materialsFilterList = Array.from(set).sort(); // แปลงเป็น array และเรียงตัวอักษร
+    this.filteredData2 = [...this.data2];  // เริ่มต้นแสดงทั้งหมด
+  }
+  filterByMaterial() {
+    if (!this.selectedMaterial) {
+      this.filteredData2 = [...this.data2];  // ถ้าไม่เลือก filter แสดงทั้งหมด
+      this.filteredData3 = [...this.data3];
+    } else {
+      this.filteredData2 = this.data2.filter(item => item.fg_material === this.selectedMaterial);
+      this.filteredData3 = this.data3.filter(item => item.fg_material === this.selectedMaterial);
+    }
+  }
+
+
+  setYearListFromRequestDate() {
+    const yearSet = new Set<string>();
+ 
+    // รวม data2 กับ data3 ทั้งหมด
+    const combined = this.data2.concat(this.data3);
+ 
+    combined.forEach(item => {
+      const dateStr = item.request_date;
+      if (dateStr) {
+        const year = new Date(dateStr).getFullYear().toString();
+        yearSet.add(year);
+      }
+    });
+ 
+    this.years = Array.from(yearSet).sort().map(y => ({
+      label: y,
+      value: +y
+    }));
+  }
+
+
+  getWeekNumber(dateStr: string): number {
+    const date = new Date(dateStr);
+    const firstDayOfYear = new Date(date.getFullYear(), 0, 1);
+    const pastDaysOfYear = Math.floor((+date - +firstDayOfYear) / 86400000);
+    return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+  }
+  setWeekListFromRequestDate() {
+    const weekSet = new Set<number>();
+    const combined = this.data2.concat(this.data3);
+ 
+    combined.forEach(item => {
+      const dateStr = item.request_date;
+      if (dateStr) {
+        const week = this.getWeekNumber(dateStr);
+        weekSet.add(week);
+      }
+    });
+ 
+    this.weeks = Array.from(weekSet).sort((a, b) => a - b).map(w => ({
+      label: 'WW' + w.toString().padStart(2, '0'),
+      value: w
+    }));
+  }
+  filterData() {
+    this.filteredData2 = this.data2.filter(item => {
+      const year = new Date(item.request_date).getFullYear();
+      const week = this.getWeekNumber(item.request_date);
+      const cust = item.work_order?.split('-')[0];
+      return (
+        (!this.selectedYear || year === this.selectedYear) &&
+        (!this.selectedWeek || week === this.selectedWeek) &&
+        (!this.selectedCustomer || cust === this.selectedCustomer)
+      );
+    });
+   
+  }
+
+
+  setCustomerListFromWorkOrder() {
+    const combined = this.data2.concat(this.data3);
+    const customerSet = new Set<string>();
+ 
+    combined.forEach(item => {
+      const workOrder = item.fg_material;
+      if (workOrder) {
+       
+        const cust = workOrder.slice(0,3); // ใช้เลข 3 หลักแรกเป็น cust
+        if (cust) {
+          customerSet.add(cust);
+        }
+      }
+    });
+ 
+    this.customers = Array.from(customerSet).map(c => ({     //แปลงcustomerSetเป็นArraymaplabel,value
+      label: c,
+      value: c
+    }));
+  }
+}
+
+
+
