@@ -1,0 +1,287 @@
+import { Component } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
+import { LoadingSpinnerService } from '../../../services/loading-spinner.service';
+import { AuthPermissionService } from '../../../services/RestFul/auth-permission.service';
+import { MpsService } from '../../../services/RestFul/mps.service';
+import { SviInterfaceReportServiceService } from '../../../services/RestFul/svi-interface-report-service.service';
+import { WroService } from '../../../services/RestFul/wro.service';
+import { da } from 'date-fns/locale';
+import {DatePipe} from '@angular/common';
+
+
+
+
+
+
+@Component({
+  selector: 'ngx-wh-kit-perform',
+  templateUrl: './wh-kit-perform.component.html',
+  styleUrls: ['./wh-kit-perform.component.scss']
+})
+export class WhKitPerformComponent {
+  plant = 'SVI2';
+  data = [];
+  years = [];
+  action_dates = [];
+  action_bys = [];
+  job_types = ['ALL','SMT_PI_KITTING','SMT_KITTING','TO_KITTING','PUTAWAY'];
+  search = {year: null,action_date: null,action_by: 'ALL',job_type: 'ALL'};
+   times = [
+    { text: '06.30 07.29 ', value: '06.30 AM' },
+    { text: '07.30 08.29 ', value: '07.30 AM' },
+    { text: '08.30 09.29 ', value: '08.30 AM' },
+    { text: '09.30 10.29 ', value: '09.30 AM' },
+    { text: '10.30 11.29 ', value: '10.30 AM' },
+    { text: '11.30 12.29 ', value: '11.30 AM' },
+    { text: '12.30 13.29 ', value: '12.30 AM' },
+    { text: '13.30 14.29 ', value: '13.30 PM' },
+    { text: '14.30 15.29 ', value: '14.30 PM' },
+    { text: '15.30 16.29 ', value: '15.30 PM' },
+    { text: '16.30 17.29 ', value: '16.30 PM' },
+    { text: '17.30 18.29 ', value: '17.30 PM' },
+    { text: '18.30 19.29 ', value: '18.30 PM' },
+    { text: '19.30 20.29 ', value: '19.30 PM' },
+    { text: '20.30 21.29 ', value: '20.30 PM' },
+    { text: '21.30 22.29 ', value: '21.30 PM' },
+    { text: '22.30 23.29 ', value: '22.30 PM' },
+    { text: '23.30 24.29 ', value: '23.30 PM' },
+    { text: '24.30 25.29 ', value: '24.30 PM' },
+    { text: '01.30 02.29 ', value: '01.30 PM' },
+    { text: '02.30 03.29 ', value: '02.30 PM' },
+    { text: '03.30 04.29 ', value: '03.30 PM' },
+    { text: '04.30 05.29 ', value: '04.30 PM' },
+    { text: '05.30 06.29 ', value: '05.30 PM' }
+  ];
+ 
+  constructor(private apiService: MpsService,
+    private wroApi: WroService,
+    private authService: AuthPermissionService,
+    private route: ActivatedRoute,
+    private  interfaceService: SviInterfaceReportServiceService,
+    public spinner$: LoadingSpinnerService,
+    private datepipe:DatePipe )
+     {
+    }
+    ngOnInit(): void {
+      if (localStorage.getItem('plant')) {
+        this.plant = localStorage.getItem('plant');
+      }
+      this.getYear()
+
+
+     
+    }
+    getYear(){
+
+
+      let sql = `select action_date  from (
+SELECT  convert(varchar(4),a.kitting_date ,121) as action_date
+ FROM TS_PLAN.dbo.whm_smt_kit_items AS a where a.plant like '${this.plant}%'
+UNION all
+SELECT convert(varchar(4),a.putaway_date ,121) as action_date
+FROM [PLAN].dbo.prod_putaway_bin AS a where  a.plant like '${this.plant}%') a
+group by action_date
+order by action_date desc`;
+      this.apiService.runQuery(sql).subscribe((response:any)=>{
+        this.years = response.data.map(x=>x.action_date).sort().reverse();
+        this.search.year= this.years[0];
+        this.getDate();
+      });
+    }
+    getDate(){
+      let where = ` `
+      if(this.search.year){
+        where = ` where substring(action_date,1,4) = '${this.search.year}' `
+      }
+      let sql = `select action_date  from (
+          SELECT  convert(varchar(10),a.kitting_date ,121) as action_date
+          FROM TS_PLAN.dbo.whm_smt_kit_items AS a where a.plant like '${this.plant}%'
+          UNION all
+          SELECT convert(varchar(10),a.putaway_date ,121) as action_date
+          FROM [PLAN].dbo.prod_putaway_bin AS a where  a.plant like '${this.plant}%') a
+         ${where}
+          group by action_date
+          order by action_date desc`
+          this.apiService.runQuery(sql).subscribe((response:any)=>{
+          this.action_dates = response.data.map(x=>
+            x.action_date).sort().reverse();
+            this.search.action_date = this.action_dates[0];
+           
+        });
+    }
+   
+    getActionBy(){
+     
+      let sql = `select action_by en,b.firstnamee+' '+b.lastnamee as name  from (
+SELECT  a.kitting_by as action_by
+ FROM TS_PLAN.dbo.whm_smt_kit_items AS a where a.plant like '${this.plant}%'
+ and cast(kitting_date as date) = '${this.search.action_date}'
+UNION all
+SELECT a.putaway_by as action_by
+FROM [PLAN].dbo.prod_putaway_bin AS a where  a.plant like '${this.plant}%'  and cast(putaway_date as date) = '${this.search.action_date}' ) a
+inner join ${this.plant=='SVI2'?'Usercenter':'TSC'}.dbo.tblusers b on replace(a.action_by,'TSC','') = b.userid collate thai_ci_as
+
+
+
+
+group by action_by,b.firstnamee+' '+b.lastnamee
+order by name desc`
+console.log(sql)
+        this.apiService.runQuery(sql).subscribe((response:any)=>{
+          this.action_bys = response.data;
+         
+        });
+    }
+   
+    getData(){
+      let where = '';
+      if(this.search.job_type&&this.search.job_type!='ALL'){
+        where = ` and job_type = '${this.search.job_type}'`
+      }
+      if(this.search.action_by&&this.search.action_by!='ALL'){
+        where = ` and action_by = '${this.search.action_by}'`
+      }
+     
+      let sql = `
+      select a.*,b.firstnamee+' '+b.lastnamee as name  from (
+      SELECT a.kitting_by as action_by,convert(varchar(10),a.kitting_date ,121) as action_date, case WHEN CAST(a.kitting_date AS TIME) >= '06:30:00' AND CAST(a.kitting_date AS TIME) < '07:30:00' THEN '06.30 AM'
+      WHEN CAST(a.kitting_date AS TIME) >= '07:30:00' AND CAST(a.kitting_date AS TIME) < '08:30:00' THEN '07.30 AM'
+      WHEN CAST(a.kitting_date AS TIME) >= '08:30:00' AND CAST(a.kitting_date AS TIME) < '09:30:00' THEN '08.30 AM'
+      WHEN CAST(a.kitting_date AS TIME) >= '09:30:00' AND CAST(a.kitting_date AS TIME) < '10:30:00' THEN '09.30 AM'
+      WHEN CAST(a.kitting_date AS TIME) >= '10:30:00' AND CAST(a.kitting_date AS TIME) < '11:30:00' THEN '10.30 AM'
+      WHEN CAST(a.kitting_date AS TIME) >= '11:30:00' AND CAST(a.kitting_date AS TIME) < '12:30:00' THEN '11.30 AM'
+      WHEN CAST(a.kitting_date AS TIME) >= '12:30:00' AND CAST(a.kitting_date AS TIME) < '13:30:00' THEN '12.30 PM'
+      WHEN CAST(a.kitting_date AS TIME) >= '13:30:00' AND CAST(a.kitting_date AS TIME) < '14:30:00' THEN '13.30 PM'
+      WHEN CAST(a.kitting_date AS TIME) >= '14:30:00' AND CAST(a.kitting_date AS TIME) < '15:30:00' THEN '14.30 PM'
+      WHEN CAST(a.kitting_date AS TIME) >= '15:30:00' AND CAST(a.kitting_date AS TIME) < '16:30:00' THEN '15.30 PM'
+      WHEN CAST(a.kitting_date AS TIME) >= '16:30:00' AND CAST(a.kitting_date AS TIME) < '17:30:00' THEN '16.30 PM'
+      WHEN CAST(a.kitting_date AS TIME) >= '17:30:00' AND CAST(a.kitting_date AS TIME) < '18:30:00' THEN '17.30 PM'
+      WHEN CAST(a.kitting_date AS TIME) >= '18:30:00' AND CAST(a.kitting_date AS TIME) < '19:30:00' THEN '18.30 PM'
+      WHEN CAST(a.kitting_date AS TIME) >= '19:30:00' AND CAST(a.kitting_date AS TIME) < '20:30:00' THEN '19.30 PM'
+      WHEN CAST(a.kitting_date AS TIME) >= '20:30:00' AND CAST(a.kitting_date AS TIME) < '21:30:00' THEN '20.30 PM'
+      WHEN CAST(a.kitting_date AS TIME) >= '21:30:00' AND CAST(a.kitting_date AS TIME) < '22:30:00' THEN '21.30 PM'
+      WHEN CAST(a.kitting_date AS TIME) >= '22:30:00' AND CAST(a.kitting_date AS TIME) < '23:30:00' THEN '22.30 PM'
+      WHEN CAST(a.kitting_date AS TIME) >= '23:30:00' OR CAST(a.kitting_date AS TIME) < '00:30:00' THEN '23.30 PM'
+      WHEN CAST(a.kitting_date AS TIME) >= '00:30:00' AND CAST(a.kitting_date AS TIME) < '01:30:00' THEN '00.30 AM'
+      WHEN CAST(a.kitting_date AS TIME) >= '01:30:00' AND CAST(a.kitting_date AS TIME) < '02:30:00' THEN '01.30 AM'
+      WHEN CAST(a.kitting_date AS TIME) >= '02:30:00' AND CAST(a.kitting_date AS TIME) < '03:30:00' THEN '02.30 AM'
+      WHEN CAST(a.kitting_date AS TIME) >= '03:30:00' AND CAST(a.kitting_date AS TIME) < '04:30:00' THEN '03.30 AM'
+      WHEN CAST(a.kitting_date AS TIME) >= '04:30:00' AND CAST(a.kitting_date AS TIME) < '05:30:00' THEN '04.30 AM'
+      WHEN CAST(a.kitting_date AS TIME) >= '05:30:00' AND CAST(a.kitting_date AS TIME) < '06:30:00' THEN '05.30 AM' end as action_time,case when a.smt_bin_type = 'to_kitting' then 'TO_KITTING'
+      when a.smt_bin_type = 'smt_pi' then 'SMT_PI_KITTING' else 'SMT_KITTING' end job_type
+      FROM TS_PLAN.dbo.whm_smt_kit_items AS a
+      where convert(varchar(10),a.kitting_date ,121)  = '${this.search.action_date}'
+       and a.plant like '${this.plant}%'
+      UNION all
+      SELECT a.putaway_by as action_by,convert(varchar(10),a.putaway_date ,121) as action_date,case WHEN CAST(a.putaway_date AS TIME) >= '06:30:00' AND CAST(a.putaway_date AS TIME) < '07:30:00' THEN '06.30 AM'
+      WHEN CAST(a.putaway_date AS TIME) >= '07:30:00' AND CAST(a.putaway_date AS TIME) < '08:30:00' THEN '07.30 AM'
+      WHEN CAST(a.putaway_date AS TIME) >= '08:30:00' AND CAST(a.putaway_date AS TIME) < '09:30:00' THEN '08.30 AM'
+      WHEN CAST(a.putaway_date AS TIME) >= '09:30:00' AND CAST(a.putaway_date AS TIME) < '10:30:00' THEN '09.30 AM'
+      WHEN CAST(a.putaway_date AS TIME) >= '10:30:00' AND CAST(a.putaway_date AS TIME) < '11:30:00' THEN '10.30 AM'
+      WHEN CAST(a.putaway_date AS TIME) >= '11:30:00' AND CAST(a.putaway_date AS TIME) < '12:30:00' THEN '11.30 AM'
+      WHEN CAST(a.putaway_date AS TIME) >= '12:30:00' AND CAST(a.putaway_date AS TIME) < '13:30:00' THEN '12.30 PM'
+      WHEN CAST(a.putaway_date AS TIME) >= '13:30:00' AND CAST(a.putaway_date AS TIME) < '14:30:00' THEN '13.30 PM'
+      WHEN CAST(a.putaway_date AS TIME) >= '14:30:00' AND CAST(a.putaway_date AS TIME) < '15:30:00' THEN '14.30 PM'
+      WHEN CAST(a.putaway_date AS TIME) >= '15:30:00' AND CAST(a.putaway_date AS TIME) < '16:30:00' THEN '15.30 PM'
+      WHEN CAST(a.putaway_date AS TIME) >= '16:30:00' AND CAST(a.putaway_date AS TIME) < '17:30:00' THEN '16.30 PM'
+      WHEN CAST(a.putaway_date AS TIME) >= '17:30:00' AND CAST(a.putaway_date AS TIME) < '18:30:00' THEN '17.30 PM'
+      WHEN CAST(a.putaway_date AS TIME) >= '18:30:00' AND CAST(a.putaway_date AS TIME) < '19:30:00' THEN '18.30 PM'
+      WHEN CAST(a.putaway_date AS TIME) >= '19:30:00' AND CAST(a.putaway_date AS TIME) < '20:30:00' THEN '19.30 PM'
+      WHEN CAST(a.putaway_date AS TIME) >= '20:30:00' AND CAST(a.putaway_date AS TIME) < '21:30:00' THEN '20.30 PM'
+      WHEN CAST(a.putaway_date AS TIME) >= '21:30:00' AND CAST(a.putaway_date AS TIME) < '22:30:00' THEN '21.30 PM'
+      WHEN CAST(a.putaway_date AS TIME) >= '22:30:00' AND CAST(a.putaway_date AS TIME) < '23:30:00' THEN '22.30 PM'
+      WHEN CAST(a.putaway_date AS TIME) >= '23:30:00' OR CAST(a.putaway_date AS TIME) < '00:30:00' THEN '23.30 PM'
+      WHEN CAST(a.putaway_date AS TIME) >= '00:30:00' AND CAST(a.putaway_date AS TIME) < '01:30:00' THEN '00.30 AM'
+      WHEN CAST(a.putaway_date AS TIME) >= '01:30:00' AND CAST(a.putaway_date AS TIME) < '02:30:00' THEN '01.30 AM'
+      WHEN CAST(a.putaway_date AS TIME) >= '02:30:00' AND CAST(a.putaway_date AS TIME) < '03:30:00' THEN '02.30 AM'
+      WHEN CAST(a.putaway_date AS TIME) >= '03:30:00' AND CAST(a.putaway_date AS TIME) < '04:30:00' THEN '03.30 AM'
+      WHEN CAST(a.putaway_date AS TIME) >= '04:30:00' AND CAST(a.putaway_date AS TIME) < '05:30:00' THEN '04.30 AM'
+      WHEN CAST(a.putaway_date AS TIME) >= '05:30:00' AND CAST(a.putaway_date AS TIME) < '06:30:00' THEN '05.30 AM' end as action_time,
+      'PUTAWAY' as job_type FROM [PLAN].dbo.prod_putaway_bin AS a where convert(varchar(10),a.putaway_date ,121)  = '${this.search.action_date}' and a.plant like '${this.plant}%') a
+     inner join ${this.plant=='SVI2'?'Usercenter':'TSC'}.dbo.tblusers b on replace(a.action_by,'TSC','') = b.userid collate thai_ci_as
+      where action_by is not null ${where};`
+       
+      this.apiService.runQuery(sql).subscribe((response:any)=>{
+              let tmp_data = [];//
+              let data = response.data;
+              for(let i=0; i < data.length;i++){
+                let x = data[i];
+                if(!tmp_data.some(xx=>xx.action_by==x.action_by&& xx.job_type==x.job_type)){
+                  let t={
+                    action_by:x.action_by,
+                    name: x.name,
+                    job_type:x.job_type,
+                    total:data.filter(dd=>dd.action_by==x.action_by && dd.job_type==x.job_type).length,
+                    //: data.filter(tt => tt.action_by == x.action_by && tt.job_type == x.job_type && tt.action_time == x.action_time).length,
+                  }
+                  for(let j=0; j<this.times.length;j++){
+                    const key = this.times[j].value
+                    t[key]=data.filter(tt => tt.action_by == x.action_by && tt.job_type == x.job_type && tt.action_time == key).length
+                  }
+                  tmp_data.push(t);
+                }
+              }
+              this.data = tmp_data;
+              console.log(this.data)
+            })
+    }
+}
+
+
+<div class="row">
+    <div class="col-2" >
+        <div style="font-size: 14px;" >Year</div>
+        <ng-select appendTo="body" [(ngModel)]="search.year" [virtualScroll]="true" (change)="getDate()">
+            <ng-option *ngFor="let item of years" [value]="item">{{item}}</ng-option>
+        </ng-select>
+    </div>
+    <div class="col-2">
+        <div style="font-size: 14px;" >Action Date</div>
+        <ng-select appendTo="body" [(ngModel)]="search.action_date " [virtualScroll]="true" (change)="getActionBy()">
+            <ng-option *ngFor="let item of action_dates" [value]="item">{{item | date:'dd/MM/yyyy' }}</ng-option>
+        </ng-select>
+    </div>
+    <div class="col-2">
+        <div style="font-size: 14px;" >Action Type </div>
+        <ng-select appendTo="body" [(ngModel)]="search.job_type" [virtualScroll]="true">
+            <ng-option *ngFor="let item of job_types" [value]="item">{{item}}</ng-option>
+        </ng-select>
+    </div>
+    <div class="col-4">
+        <div style="font-size: 14px;">Action By</div>
+        <ng-select appendTo="body" [(ngModel)]="search.action_by" [virtualScroll]="true">
+            <ng-option *ngFor="let item of action_bys" [value]="item.en">{{item.en}} {{item.name}}</ng-option>
+        </ng-select>
+    </div>
+    <div class="col">
+        <button class="btn btn-info" style="margin-top: 18px;" [disabled]="!search.action_date" (click)="getData()">Search </button>
+    </div>
+</div>
+<div class="row mt-2"  >
+    <div class="col-2" class="table-responsive">
+        <table  class="table table-hover table-bordered "  >
+            <thead >
+                <tr  >
+                    <th  class="table-light text-center text-align" style="vertical-align: middle;font-weight: normal;font-size: 14px;" >EN</th>
+                    <th  style="min-width: 155px !important ;white-space: nowrap; vertical-align: middle;font-weight: normal;font-size: 14px;" class="table-success text-center" >Name</th>
+                    <th class="table-secondary text-center" style="white-space: nowrap; vertical-align: middle;font-weight: normal;font-size: 14px;">Type action</th>
+                    <th class="table-light text-center" style="white-space: nowrap; vertical-align: middle;font-weight: normal;font-size: 14px;">Total</th>
+                    <th class="table-primary text-center" style="vertical-align: middle;font-weight: normal;font-size: 14px;" *ngFor="let el of times"> {{el.text}} </th>
+                </tr>
+       
+            </thead>
+            <tbody class="table-warning"  style="font-weight:200;font-size: 10.5px;" >
+                <tr tr *ngFor="let item of data"  >
+                    <td class="table-light">{{item.action_by}}</td>
+                    <td class="table-success"> {{item.name}}</td>
+                    <td class="table-secondary job-box" [ngClass]="{'job-putaway':item.job_type=='PUTAWAY','job-to':item.job_type=='TO_KITTING','job-kitting':item.job_type=='SMT_KITTING','job-pi':item.job_type=='SMT_PI_KITTING'}"  >{{item.job_type}}</td>
+                    <td class="table-light" style="text-align: center;">{{item.total}}</td>
+                    <td *ngFor="let el of times" [ngClass]="{'highlight':item[el.value]>0}" style="text-align: center;" >{{item[el.value]=== 0 ? '' :item[el.value]}}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+
+
