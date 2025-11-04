@@ -1,0 +1,366 @@
+<div class="border border-primary rounded p-3  d-inline-block"
+  style="font-weight: bold !important;background-color: rgba(21, 153, 230, 0.356);">
+  <h3>Warehouse separate FG for not full box</h3>
+</div>
+<div class="row g-3 align-items-end mt-3">
+  <div class="col-md-2">
+    <label class="form-label fw-semibold text-muted" style="font-weight: normal !important;">Year</label>
+    <ng-select
+      [items]="years"
+      bindLabel="label"
+      bindValue="value"
+      [(ngModel)]="selectedYear"
+      (change)="filterData()"
+      placeholder="year"
+      appendTo="body"
+      [virtualScroll]="true"
+      class="custom-ng-select">
+    </ng-select>
+  </div>
+
+
+  <div class="col-md-2">
+    <label class="form-label fw-semibold text-muted" style="font-weight: normal !important;" >WW</label>
+    <ng-select
+      [items]="weeks"
+      bindLabel="label"
+      bindValue="value"
+      [(ngModel)]="selectedWeek"
+      (change)="filterData()"
+      placeholder="ww"
+      appendTo="body"
+      [virtualScroll]="true"
+      class="custom-ng-select">
+    </ng-select>
+  </div>
+
+
+  <div class="col-md-2">
+    <label class="form-label fw-semibold text-muted" style="font-weight: normal !important;">Cust</label>
+    <ng-select
+      [items]="customers"
+      bindLabel="label"
+      bindValue="value"
+      [(ngModel)]="selectedCustomer"
+      (change)="filterData()"
+      placeholder="cust"
+      appendTo="body"
+      [virtualScroll]="true"
+      class="custom-ng-select">
+    </ng-select>
+  </div>
+
+
+  <div class="col-md-2">
+    <label class="form-label fw-semibold text-muted" style="font-weight: normal !important;">Material</label>
+    <ng-select
+      [items]="materialsFilterList"
+      bindLabel=""
+      bindValue=""
+      placeholder="Material"
+      [(ngModel)]="selectedMaterial"
+      (change)="filterByMaterial()"
+      [clearable]="true"
+      [searchable]="true"
+      class="custom-ng-select">
+    </ng-select>
+  </div>
+
+
+  <div class="col-md-2 text-start">
+    <button class="btn" style="background-color: #e97979; color: white;" (click)="showModal = true">
+      <i class="fas fa-plus"></i> Request
+    </button>
+  </div>
+</div>
+
+
+<!-- Modal -->
+<div *ngIf="showModal" class="modal-backdrop">
+  <div class="modal-box shadow-lg p-4 rounded bg-white" style="max-width: 600px; margin: auto;">
+    <h3 class="mb-4 text-center">
+      <i class="bi bi-journal-text me-2 text-primary"></i>Request OQA
+    </h3>
+    <!--เลือก Type-->
+    <div class="mb-2">
+      <label class="form-label fw-semibold">
+        <i class="bi bi-ui-checks me-1 text-info"></i> Type
+      </label>
+      <select class="form-select" [(ngModel)]="data.type_name" (ngModelChange)="onTypeChange($event)">
+        <option value="" disabled selected hidden>กรุณาเลือก Type</option>
+        <option value="Separate">🧊 Separate</option>
+        <option value="Join">📦 Join Box</option>
+      </select>
+    </div>
+    <!-- Request time -->
+    <div *ngIf="data.type_name == 'Separate' || data.type_name == 'Join'" class="row mb-2 align-items-center">
+      <div class="col-md-3">
+        <label class="form-label mb-0">Request time</label>
+      </div>
+      <div class="col-md-9">
+        <input type="datetime-local" class="form-control" [(ngModel)]="data.request_date">
+      </div>
+    </div>
+
+
+    <!-- Work Order -->
+    <div *ngIf="data.type_name" class="row mb-3">
+      <label class="col-md-3 col-form-label">Work order</label>
+      <div class="col-md-9">
+        <div class="input-group">
+          <input type="text" class="form-control" placeholder="กรอก Work Order" [(ngModel)]="data.work_order">
+          <button class="btn btn-outline-primary" (click)="workorderData()">ค้นหา</button>
+        </div>
+        <small class="text-primary fw-semibold mt-1 d-block">{{ message }}</small>
+      </div>
+    </div>
+
+
+    <!-- Full Box (เฉพาะ Separate) -->
+    <div *ngIf="data.type_name=='Separate'" class="row mb-2 align-items-center">
+      <div class="col-md-3">
+        <label class="form-label mb-0">Full Box</label>
+      </div>
+      <div class="col-md-9">
+        <input type="text" class="form-control" [(ngModel)]="data.total_box">
+      </div>
+    </div>
+
+
+    <!-- ปุ่ม Add  -->
+    <div *ngIf="data.type_name == 'Separate' || data.type_name == 'Join'" class="mb-2 d-flex align-items-center gap-2">
+      <button class="btn btn-outline-primary" (click)="addBox()">Add +</button>
+
+
+
+
+    </div>
+
+
+    <!-- รายการ Box แบบแบ่ง -->
+    <div *ngFor="let box of boxes; let i = index" class="row mb-2 align-items-center">
+      <div class="col-auto fw-bold">
+        {{ data.type_name === 'Join' ? '📦 Qty' + (i + 1) + ' (รวม)' : '🧊 Box' + (i + 1) + ' (แบ่ง)' }}
+      </div>
+      <div class="col">
+        <input type="text" class="form-control" [(ngModel)]="box.qty" (ngModelChange)="calculateTotal()">
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-sm btn-outline-danger" (click)="deleteBox(i)">
+          <i class="fas fa-trash-alt"></i>
+        </button>
+      </div>
+    </div>
+
+
+
+
+
+
+    <!--เฉพาะJoin-->
+    <div *ngIf="data.type_name == 'Join' && boxes.length>0" class="mt-3 text-start">
+      <span class="fw-bold text-primary">
+        <i class="bi bi-boxes me-1"></i> Box Bal. Qty: {{ data.total_box }}
+      </span>
+    </div>
+    <div class="d-flex justify-content-start gap-2 mt-3">
+      <button class="btn btn-success" style="background-color: rgb(9, 240, 78);" (click)="submit()" [disabled]="dissubmit()" > SAVE</button>
+      <button class="btn btn-warning" style="background-color: yellow;" (click)="closeModal()"> CLOSE</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Modal แสดงรายละเอียด detail-->
+<div *ngIf="showDetailModal" class="modal-backdrop">
+  <div class="modal-box shadow-lg p-4 rounded bg-white" style="max-width: 600px; margin: auto;">
+    <h3 class="mb-4 text-center">
+      <i class="bi bi-journal-text me-2 text-primary"></i> Request Detail {{ selectedDetail.request_no }}
+    </h3>
+
+
+    <!-- Type -->
+    <div class="row mb-2">
+      <div class="col-4 fw-semibold">Type:</div>
+      <div class="col-8">{{ selectedDetail.type_name }}</div>
+    </div>
+
+
+    <!-- Work Order + FG Material -->
+    <div class="row mb-2">
+      <div class="col-4 fw-semibold">Work Order:</div>
+      <div class="col-8">{{ selectedDetail.work_order }}</div>
+    </div>
+    <div class="row mb-2">
+      <div class="col-4 fw-semibold">FG Material:</div>
+      <div class="col-8">{{ selectedDetail.fg_material }}</div>
+    </div>
+
+
+    <!-- Full Box -->
+    <div class="row mb-2" *ngIf="selectedDetail.type_name === 'Separate'">
+      <div class="col-4 fw-semibold">Full BOX:</div>
+      <div class="col-8">{{ selectedDetail.total_box }}</div>
+    </div>
+
+
+    <!-- Boxes -->
+    <div *ngIf="selectedDetail.boxes?.length > 0" class="mb-2">
+      <div *ngFor="let box of selectedDetail.boxes; let i = index" class="row mb-1">
+        <div class="col-4 fw-semibold">
+          {{ selectedDetail.type_name === 'Join' ? '📦 Qty' + (i + 1) + ' (รวม)' : '🧊 Box' + (i + 1) + ' (แบ่ง)' }}
+        </div>
+        <div class="col-8">{{ box.qty }}</div>
+      </div>
+    </div>
+
+
+    <!-- Remark -->
+    <div class="row mb-2">
+      <div class="col-4 fw-semibold">Remark:</div>
+      <div class="col-8">
+        <!-- ถ้ายังรอ approve -->
+        <textarea *ngIf="selectedDetail.status === 1" class="form-control" [(ngModel)]="selectedDetail.remark" rows="2">
+    </textarea>
+
+
+        <!-- ถ้าเป็น status 2 หรือ 3 -->
+        <div *ngIf="selectedDetail.status === 2 || selectedDetail.status === 3" class="border rounded p-2 bg-light">
+          {{ selectedDetail.remark || '-' }}
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ปุ่ม -->
+    <div class="d-flex justify-content-end gap-2 mt-3">
+      <button *ngIf="selectedDetail.status===1" class="btn btn-success" (click)="accpet(selectedDetail)">Accept</button>
+      <button *ngIf="selectedDetail.status===1" class="btn btn-danger"
+        (click)="rejectRequest(selectedDetail)">Reject</button>
+      <button class="btn btn-secondary" (click)="showDetailModal = false">Close</button>
+    </div>
+  </div>
+</div>
+<!--table-->
+<div class="row mt-3">
+  <div class="col-12">
+    <div class="table-responsive shadow rounded">
+      <table class="table table-bordered table-hover table-striped align-middle mb-0">
+        <thead class="table-primary text-center">
+          <tr>
+            <th>#</th>
+            <th>Request No</th>
+            <th>Status</th>
+            <th>Type</th>
+            <th>Request Date</th>
+            <th>FG Material</th>
+            <th>Work Order</th>
+            <th>Full Qty (BOX)</th>
+            <th>Qty (แบ่ง/รวม)</th>
+            <th>Qty Box (คงเหลือ)</th>
+            <th>WH</th>
+            <th>Create Date</th>
+            <th>OQA</th>
+            <th>OQA Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let item of data2" class="text-center" [ngClass]="{
+            'bg-highlight': item.year === selectedYear || item.week === selectedWeek || item.customer === selectedCustomer
+          }">
+            <td>{{ item.id }}</td>
+            <td
+              class="text-primary fw-semibold text-decoration-underline"
+              style="cursor: pointer;"
+              (click)="openModalWithDetail(item)">
+              {{ item.request_no }}
+            </td>
+            <td><span
+              class="badge px-3 py-2"
+              [ngClass]="{
+                'bg-warning text-dark': item.status === 1,
+                'bg-success': item.status === 2,
+                'bg-danger': item.status === 3
+              }">
+              {{ getStatusLabel(item.status) }}
+            </span></td>
+            <td>{{ item.type_name }}</td>
+            <td>{{ item.request_date | date: 'dd-MM-yyyy' }}</td>
+            <td>{{ item.fg_material || '-' }}</td>
+            <td>{{ item.work_order }}</td>
+            <td>{{ item.total_box }}</td>
+            <td *ngIf="item.details">{{ formatQty(item) }}</td>
+            <td>{{ item.qty_box || '-' }}</td>
+            <td>{{ item.create_by || '-' }}</td>
+            <td>{{ item.create_date | date: 'dd-MM-yyyy HH:mm' || '-' }}</td>
+            <td>{{ item.oqa || '-' }}</td>
+            <td>{{ item.oqa_date | date: 'dd-MM-yyyy HH:mm' || '-' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+
+
+
+<!-- Table2 -->
+<div class="row mt-3">
+  <div class="col-12">
+    <div class="table-responsive shadow rounded">
+      <table class="table table-bordered table-hover table-striped align-middle mb-0">
+        <thead class="table-success text-center">
+          <tr>
+            <th>#</th>
+            <th>Request No</th>
+            <th>Status</th>
+            <th>Type</th>
+            <th>Request Date</th>
+            <th>FG Material</th>
+            <th>Work Order</th>
+            <th>Full Qty (BOX)</th>
+            <th>Qty (แบ่ง/รวม)</th>
+            <th>Qty Box (คงเหลือ)</th>
+            <th>WH</th>
+            <th>Create Date</th>
+            <th>OQA</th>
+            <th>OQA Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let item of data3; let i = index" class="text-center">
+            <td>{{ i + 1 }}</td>
+            <td
+              class="text-primary fw-semibold text-decoration-underline"
+              style="cursor: pointer;"
+              (click)="openModalWithDetail(item)">
+              {{ item.request_no }}
+            </td>
+            <td><span
+              class="badge px-3 py-2"
+              [ngClass]="{
+                'bg-warning text-dark': item.status === 1,
+                'bg-success': item.status === 2,
+                'bg-danger': item.status === 3
+              }">
+              {{ getStatusLabel(item.status) }}
+            </span></td>
+            <td>{{ item.type_name }}</td>
+            <td>{{ item.request_date | date: 'dd-MM-yyyy ' }}</td>
+            <td>{{ item.fg_material || '-' }}</td>
+            <td>{{ item.work_order }}</td>
+            <td>{{ item.total_box }}</td>
+            <td>{{ formatQty(item) }}</td>
+            <td>{{ item.qty_box || '-' }}</td>
+            <td>{{ item.create_by || '-' }}</td>
+            <td>{{ item.create_date | date: 'dd-MM-yyyy HH:mm' }}</td>
+            <td>{{ item.oqa || '-' }}</td>
+            <td>{{ item.oqa_date | date: 'dd-MM-yyyy HH:mm' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
